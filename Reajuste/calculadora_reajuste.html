@@ -1,0 +1,1116 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Calculadora Contratual - Lei 14.133/2021</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f7fafc;
+        }
+        .money-input {
+            text-align: right;
+        }
+        .module-card {
+            background-color: #fff;
+            padding: 1.5rem;
+            border-radius: 0.75rem;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        }
+        .section-header {
+            border-bottom: 3px solid #06b6d4; /* Cyan-500 */
+            margin-bottom: 1rem;
+            padding-bottom: 0.5rem;
+        }
+        /* Estilos do Modal de Confirmação */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+        .modal-content {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 0.75rem;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+            max-width: 400px;
+            width: 90%;
+        }
+        
+        /* --- ESTILOS DE IMPRESSÃO APRIMORADOS --- */
+        @media print {
+            /* Controla margens da página de impressão */
+            @page {
+                margin: 1cm;
+            }
+            /* Esconde toda a UI principal */
+            body > *:not(#print-area) { visibility: hidden; }
+            
+            /* Torna a área de impressão visível e ajusta para ocupar 100% da área útil */
+            #print-area { 
+                visibility: visible; 
+                position: absolute; 
+                left: 0; 
+                top: 0; 
+                width: 100%; 
+                padding: 0;
+                margin: 0;
+                border: none;
+                box-shadow: none;
+            }
+            
+            /* Impede que blocos de cálculo e tabelas sejam cortados entre páginas */
+            .formula-block, .empenho-block {
+                page-break-inside: avoid;
+            }
+
+            /* OCULTA O BOTÃO DE IMPRESSÃO DENTRO DO RELATÓRIO */
+            .print-only-button {
+                display: none;
+            }
+
+            /* Garante que o conteúdo tenha fundo branco e texto preto na impressão */
+            #memory-content {
+                color: black !important;
+                background-color: white !important;
+            }
+        }
+    </style>
+</head>
+<body class="p-4 sm:p-8">
+
+    <!-- Modal de Confirmação de Reset -->
+    <div id="reset-modal" class="modal-overlay hidden">
+        <div class="modal-content">
+            <h3 class="text-xl font-bold text-red-600 mb-4">Confirmar Recomeço</h3>
+            <p class="text-gray-700 mb-6">Tem certeza que deseja apagar todos os dados e recomeçar? Esta ação não pode ser desfeita.</p>
+            <div class="flex justify-end space-x-3">
+                <button onclick="hideResetModal()" class="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300">
+                    Cancelar
+                </button>
+                <button onclick="resetContractData()" class="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 font-bold">
+                    Sim, Apagar Tudo
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Application Container -->
+    <div id="app" class="max-w-4xl mx-auto bg-gray-50 p-6 rounded-xl shadow-2xl space-y-8">
+        <header class="text-center mb-6">
+            <h1 class="text-3xl font-extrabold text-cyan-700">Reajuste, Repactuação e Empenho Anual</h1>
+            <p class="text-sm text-gray-500">Simulador de Reequilíbrio e Planejamento Orçamentário (Lei 14.133)</p>
+        </header>
+
+        <!-- Loading/Error Message -->
+        <div id="status-message" class="text-center text-sm text-red-600 font-semibold hidden">
+            Aguardando inicialização do sistema...
+        </div>
+        
+        <!-- Main Content (Hidden until Auth Ready) -->
+        <div id="main-content" class="space-y-8 hidden">
+
+            <!-- 1. Seleção do Tipo de Cálculo -->
+            <section class="p-4 border border-gray-300 rounded-lg bg-white shadow-sm">
+                <h2 class="text-xl font-bold text-gray-800 section-header">1. Seleção do Fluxo</h2>
+                <label for="tipoCalculo" class="block text-sm font-medium text-gray-700">Selecione a modalidade de cálculo:</label>
+                <select id="tipoCalculo" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-3 border text-lg focus:ring-cyan-500 focus:border-cyan-500">
+                    <option value="" disabled selected>-- Escolha o tipo de alteração contratual --</option>
+                    <option value="Reajustamento">Reajustamento (Por Índice) - Art. 135</option>
+                    <option value="Repactuacao">Repactuação (Mão de Obra) - Art. 131, IV</option>
+                </select>
+            </section>
+
+            <!-- 2. Módulos de Cálculo Dinâmico (Reajuste/Repactuação) -->
+            <section>
+                <h2 class="text-xl font-bold text-gray-800 section-header">2. Dados para Cálculo Primário</h2>
+                
+                <div id="module-container" class="space-y-6">
+                    <p id="module-placeholder" class="text-gray-500 italic p-4 text-center border rounded-lg">Selecione uma modalidade acima para iniciar.</p>
+                
+                    <!-- Módulo 2.1: Reajustamento (Por Índice) - SIMPLIFICADO -->
+                    <div id="module-reajustamento" class="module-card hidden space-y-4">
+                        <h3 class="text-lg font-semibold text-cyan-700">Reajustamento por Percentual Acumulado</h3>
+                        
+                        <!-- Valor Base e Unidade -->
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div class="md:col-span-2">
+                                <label for="reaj_VOriginal" class="block text-sm font-medium text-gray-700">Valor Base do Contrato/Parcela (R$)</label>
+                                <input type="text" id="reaj_VOriginal" placeholder="0,00" class="money-input mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border">
+                            </div>
+                            <div>
+                                <label for="reaj_VUnidade" class="block text-sm font-medium text-gray-700">Unidade do Valor Base</label>
+                                <select id="reaj_VUnidade" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border">
+                                    <option value="Mensal">Mensal</option>
+                                    <option value="Anual">Anual</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <!-- Período de Reajuste -->
+                            <div>
+                                <label for="reaj_DInicio" class="block text-sm font-medium text-gray-700">Data de Início do Período a Corrigir (Aniversário Anterior)</label>
+                                <input type="date" id="reaj_DInicio" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border">
+                            </div>
+                            <div>
+                                <label for="reaj_DFim" class="block text-sm font-medium text-gray-700">Data do Novo Aniversário (Início do Direito)</label>
+                                <input type="date" id="reaj_DFim" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border">
+                            </div>
+                            
+                            <!-- Índice e Percentual -->
+                            <div>
+                                <label for="reaj_IndiceNome" class="block text-sm font-medium text-gray-700">Índice Usado</label>
+                                <input type="text" id="reaj_IndiceNome" placeholder="Ex: IPCA ou IGPM" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border">
+                            </div>
+                            <div>
+                                <label for="reaj_Percentual" class="block text-sm font-medium text-gray-700">Percentual de Correção Aplicável (%)</label>
+                                <input type="number" step="0.0001" id="reaj_Percentual" placeholder="Ex: 5.48" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border">
+                            </div>
+                            
+                            <!-- Data de Concessão -->
+                            <div class="md:col-span-2">
+                                <label for="reaj_DConcessao" class="block text-sm font-medium text-gray-700">Data de Início do Novo Pagamento (Concessão)</label>
+                                <input type="date" id="reaj_DConcessao" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border">
+                            </div>
+                        </div>
+                        <button onclick="calculateAndDisplay('Reajustamento')" class="w-full bg-cyan-600 hover:bg-cyan-700 text-white font-bold py-2 px-4 rounded-lg shadow-md transition duration-150 mt-4">
+                            Calcular Reajustamento
+                        </button>
+                    </div>
+
+                    <!-- Módulo 2.2: Repactuação (Mão de Obra) -->
+                    <div id="module-repactuacao" class="module-card hidden space-y-4">
+                        <h3 class="text-lg font-semibold text-cyan-700">Repactuação (Mão de Obra)</h3>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div class="md:col-span-2">
+                                <label for="repac_VOriginal" class="block text-sm font-medium text-gray-700">Valor Mensal Anterior (R$)</label>
+                                <input type="text" id="repac_VOriginal" placeholder="0,00" class="money-input mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border">
+                            </div>
+                            <div class="md:col-span-2">
+                                <label for="repac_VNovoAprovado" class="block text-sm font-medium text-gray-700">Novo Valor Mensal Aprovado (R$)</label>
+                                <input type="text" id="repac_VNovoAprovado" placeholder="0,00" class="money-input mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border">
+                            </div>
+                            <div>
+                                <label for="repac_DAniversario" class="block text-sm font-medium text-gray-700">Data de Aniversário (Fato Gerador)</label>
+                                <input type="date" id="repac_DAniversario" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border">
+                            </div>
+                            <div>
+                                <label for="repac_DSolicitacao" class="block text-sm font-medium text-gray-700">Data da Solicitação (Protocolo da Empresa)</label>
+                                <input type="date" id="repac_DSolicitacao" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border">
+                            </div>
+                            <div>
+                                <label for="repac_DProrrogacao" class="block text-sm font-medium text-gray-700">Data da Prorrogação Contratual (Se Houve)</label>
+                                <input type="date" id="repac_DProrrogacao" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border">
+                                <p class="text-xs text-red-500 mt-1">Verificação de Preclusão Lógica.</p>
+                            </div>
+                            <div>
+                                <label for="repac_DConcessao" class="block text-sm font-medium text-gray-700">Data de Início do Novo Pagamento (Concessão)</label>
+                                <input type="date" id="repac_DConcessao" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border">
+                            </div>
+                        </div>
+                        <button onclick="calculateAndDisplay('Repactuacao')" class="w-full bg-cyan-600 hover:bg-cyan-700 text-white font-bold py-2 px-4 rounded-lg shadow-md transition duration-150 mt-4">
+                            Calcular Repactuação e Retroativo
+                        </button>
+                    </div>
+                </div>
+            </section>
+            
+            <!-- 3. Resultados e Saídas do Cálculo Primário -->
+            <section>
+                <h2 class="text-xl font-bold text-gray-800 section-header">3. Consolidação e Retroativo</h2>
+                <div id="output-area" class="space-y-4 p-4 border border-blue-200 bg-blue-50 rounded-lg">
+                    <p id="output-placeholder" class="text-blue-500 italic text-center">Os resultados aparecerão aqui após o cálculo.</p>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <!-- Novo Valor -->
+                        <div id="output-novo-valor" class="hidden bg-white p-3 rounded-lg border-l-4 border-blue-500">
+                            <p class="text-sm font-medium text-gray-700">Novo Valor Contratual Mensal (Atualizado)</p>
+                            <p class="text-2xl font-extrabold text-blue-700" id="output-valor-final">R$ 0,00</p>
+                        </div>
+                        <!-- Retroativo -->
+                        <div id="output-retroativo" class="hidden bg-white p-3 rounded-lg border-l-4 border-green-500">
+                            <p class="text-sm font-medium text-gray-700">Valor Retroativo Total a Pagar</p>
+                            <p class="text-2xl font-extrabold text-green-700" id="output-valor-retroativo">R$ 0,00</p>
+                        </div>
+                    </div>
+                    
+                    <!-- Alerta de Preclusão (Repactuação) -->
+                    <div id="output-alerta" class="hidden bg-red-100 p-3 rounded-lg border-l-4 border-red-500 text-red-800 font-semibold">
+                        <!-- Mensagem de preclusão ou outro alerta -->
+                    </div>
+
+                    <div id="renovacao-module-container" class="space-y-4 pt-4 border-t border-gray-200 hidden">
+                        <h4 class="text-lg font-bold text-gray-800">4. Planejamento da Renovação e Empenho Anual</h4>
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                             <div>
+                                <label for="renov_Months" class="block text-sm font-medium text-gray-700">Período de Renovação (Meses)</label>
+                                <input type="number" id="renov_Months" min="1" max="60" value="12" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border" onchange="calculateRenewalEmpenho()">
+                            </div>
+                            <div class="md:col-span-2">
+                                <label for="renov_DInicio" class="block text-sm font-medium text-gray-700">Data de Início da Renovação (Contrato) </label>
+                                <input type="date" id="renov_DInicio" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border" onchange="calculateRenewalEmpenho()">
+                                <p class="text-xs text-gray-500 mt-1">Deve ser o primeiro dia do ciclo contratual.</p>
+                            </div>
+                        </div>
+
+                        <div id="output-empenho-breakdown" class="space-y-3 pt-3">
+                            <!-- Resultados do Empenho aqui -->
+                        </div>
+                    </div>
+
+                    <!-- Botão de Visualizar/Esconder Memória -->
+                    <div id="toggle-memory-area" class="text-center pt-4 hidden">
+                         <button id="toggle-memory-btn" onclick="toggleMemoryVisibility()" class="bg-gray-700 hover:bg-gray-800 text-white font-bold py-2 px-4 rounded-lg shadow-md transition duration-150 flex items-center mx-auto">
+                            <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.477 0 8.268 2.943 9.542 7-1.274 4.057-5.065 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path></svg>
+                            Ver Memória de Cálculo
+                        </button>
+                    </div>
+                </div>
+            </section>
+            
+            <!-- Memória de Cálculo (Exibida na Tela, mas com layout otimizado para impressão) -->
+            <section id="print-area" class="p-6 mt-8 rounded-lg border border-gray-300 shadow-xl bg-white hidden">
+                 <header class="mb-4 print:mb-8 text-center border-b pb-2 print:border-b-2">
+                    <h2 class="text-2xl font-extrabold text-gray-800 print:text-3xl">Memória de Cálculo Detalhada</h2>
+                    <p class="text-sm text-gray-500 print:text-xs">Documento Gerado pela Calculadora de Contratos (Lei 14.133/2021)</p>
+                 </header>
+
+                 <div id="memory-content" class="space-y-6 text-gray-700 text-base">
+                     <p class="text-gray-500 italic text-center">Nenhum cálculo realizado ou carregado.</p>
+                 </div>
+
+                 <footer class="text-center pt-8 print-only-button border-t mt-6">
+                    <button onclick="printMemory()" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-lg shadow-md transition duration-150 flex items-center mx-auto">
+                        <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2z"></path></svg>
+                        Gerar Impressão (PDF)
+                    </button>
+                 </footer>
+            </section>
+            
+            <!-- Botão de Recomeçar (Reset) -->
+            <div class="text-center pt-8 border-t border-gray-300">
+                <button onclick="showResetModal()" class="px-6 py-2 bg-red-500 text-white font-bold rounded-lg shadow-lg hover:bg-red-600 transition duration-150">
+                    Recomeçar (Apagar Dados)
+                </button>
+            </div>
+            
+            <p class="text-xs text-gray-500 text-right mt-2">ID do Usuário: <span id="display-user-id">[Carregando]</span></p>
+        </div>
+    </div>
+
+    <!-- Firebase Imports and Logic -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, onSnapshot, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        
+        // --- CONFIGURAÇÕES GLOBAIS E FIREBASE ---
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+
+        let db, auth, userId;
+        
+        // Bloco de Configuração Firebase para execução fora do Canvas.
+        const LOCAL_FIREBASE_CONFIG = {
+            apiKey: "",
+            authDomain: "",
+            projectId: "",
+            storageBucket: "",
+            messagingSenderId: "",
+            appId: ""
+        };
+        
+        const firebaseConfig = (typeof __firebase_config !== 'undefined' && JSON.parse(__firebase_config).apiKey)
+            ? JSON.parse(__firebase_config)
+            : LOCAL_FIREBASE_CONFIG;
+            
+        const persistenceEnabled = !!firebaseConfig.apiKey; 
+        
+        // Base para cálculo de retroativo (permanece 30)
+        const RETROACTIVE_BASE_DAYS = 30; 
+
+        window.contractData = {
+            tipoCalculo: '',
+            lastResult: null, 
+            renov_Months: 12, 
+            renov_DInicio: '',
+            renewalResult: null 
+        }; 
+
+        // --- FUNÇÕES AUXILIARES DE MOEDA, DATAS E FORMATO ---
+        const formatCurrency = (value) => {
+            const num = parseFloat(value) || 0;
+            return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(num);
+        };
+        const parseCurrency = (text) => {
+            if (typeof text === 'number') return text;
+            if (typeof text !== 'string') return 0;
+            return parseFloat(text.replace(/[R$\.]/g, '').replace(',', '.')) || 0;
+        };
+
+        const moneyMask = (e) => {
+            let v = e.target.value.replace(/\D/g, ''); 
+            
+            if (v.length === 0) {
+                e.target.value = ''; 
+                return;
+            }
+            
+            while (v.length < 3) {
+                v = '0' + v;
+            }
+
+            let cents = v.slice(-2);
+            let reais = v.slice(0, -2);
+            
+            reais = reais.replace(/^0+/, '');
+            if (reais === '') reais = '0';
+            
+            reais = reais.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+
+            e.target.value = `${reais},${cents}`;
+        }
+        
+        // Diferença em dias (D1 exclusivo, D2 exclusivo). Usado para retroativo.
+        const getDaysDifference = (d1Str, d2Str) => {
+            if (!d1Str || !d2Str) return 0;
+
+            const date1 = new Date(d1Str + 'T00:00:00');
+            const date2 = new Date(d2Str + 'T00:00:00');
+            
+            if (date2 <= date1) return 0; 
+            
+            const oneDay = 1000 * 60 * 60 * 24;
+            const diffTime = date2.getTime() - date1.getTime();
+            return Math.floor(diffTime / oneDay);
+        };
+        
+        // Diferença em dias (D1 inclusivo, D2 inclusivo). Usado para empenho.
+        const getDaysBetweenInclusive = (d1Str, d2Str) => {
+             if (!d1Str || !d2Str) return 0;
+
+            const date1 = new Date(d1Str + 'T00:00:00');
+            const date2 = new Date(d2Str + 'T00:00:00');
+            
+            if (date2 < date1) return 0; 
+            
+            const oneDay = 1000 * 60 * 60 * 24;
+            const diffTime = date2.getTime() - date1.getTime();
+            return Math.floor(diffTime / oneDay) + 1; 
+        }
+
+        const formatDate = (dateStr) => {
+            if (!dateStr || dateStr === 'N/A') return 'N/A';
+            return new Date(dateStr + 'T00:00:00').toLocaleDateString('pt-BR');
+        };
+        
+        // Formata um número para ser exibido dentro da fórmula LaTeX, mantendo alta precisão (4 casas)
+        // e usando ponto como separador decimal para a matemática, mas sem formatação de moeda.
+        const formatNumberForLatex = (value, precision = 4) => {
+            if (typeof value !== 'number') return '0';
+            return value.toFixed(precision); 
+        };
+        
+        // Formata um número para ser exibido com separador de milhar e duas casas (para uso em strings de fórmula)
+        const formatNumberForFormulaString = (value) => {
+            const num = parseFloat(value) || 0;
+            // Usa toLocaleString para formatar com separador de milhar e vírgula decimal
+            return num.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 4 }); 
+        };
+
+        // --- PERSISTÊNCIA E ESTADO (FIREBASE) ---
+        
+        const collectFormData = () => {
+             const data = {};
+             const fields = document.querySelectorAll('#main-content input, #main-content select');
+             
+             fields.forEach(element => {
+                 if (element.id && element.id !== 'tipoCalculo' && element.type !== 'submit') {
+                     let value;
+                     if (element.classList.contains('money-input')) {
+                         value = parseCurrency(element.value);
+                     } else if (element.type === 'number') {
+                         value = parseFloat(element.value) || 0;
+                     } else {
+                         value = element.value;
+                     }
+                     data[element.id] = value;
+                 }
+             });
+             
+             data.tipoCalculo = document.getElementById('tipoCalculo').value;
+             data.lastResult = window.contractData.lastResult;
+             data.renewalResult = window.contractData.renewalResult;
+             
+             return data;
+        };
+
+        const saveContractData = async (data = collectFormData()) => {
+            if (!db || !userId || !persistenceEnabled) {
+                return; 
+            }
+            const contractRef = doc(db, `artifacts/${appId}/users/${userId}/reajuste_calc`, 'main_state');
+            try {
+                await setDoc(contractRef, data, { merge: true });
+            } catch (e) {
+                console.error("Erro ao salvar documento: ", e);
+            }
+        };
+
+        window.showResetModal = () => {
+            document.getElementById('reset-modal').classList.remove('hidden');
+        };
+
+        window.hideResetModal = () => {
+            document.getElementById('reset-modal').classList.add('hidden');
+        };
+
+        window.resetContractData = async () => {
+            window.hideResetModal();
+            if (!db || !userId || !persistenceEnabled) {
+                window.contractData = {
+                    tipoCalculo: '', lastResult: null, renewalResult: null, renov_Months: 12, renov_DInicio: ''
+                };
+                window.location.reload(); 
+                return;
+            }
+
+            const contractRef = doc(db, `artifacts/${appId}/users/${userId}/reajuste_calc`, 'main_state');
+            try {
+                await deleteDoc(contractRef); 
+                document.getElementById('status-message').textContent = '✅ Dados do contrato apagados com sucesso. Recomeçando...';
+                document.getElementById('status-message').classList.remove('hidden', 'text-red-600');
+                document.getElementById('status-message').classList.add('text-green-600');
+                setTimeout(() => window.location.reload(), 500); 
+            } catch (e) {
+                console.error("Erro ao resetar documento: ", e);
+                document.getElementById('status-message').textContent = '❌ Erro ao apagar dados.';
+                document.getElementById('status-message').classList.remove('hidden', 'text-green-600');
+                document.getElementById('status-message').classList.add('text-red-600');
+                setTimeout(() => document.getElementById('status-message').classList.add('hidden'), 5000);
+            }
+        };
+
+        // --- LÓGICA DO REAJUSTAMENTO (FLUXO 1) ---
+
+        const calculateReajustamento = (data) => {
+            const { reaj_VOriginal, reaj_VUnidade, reaj_DInicio, reaj_DFim, reaj_IndiceNome, reaj_Percentual, reaj_DConcessao } = data;
+            
+            if (reaj_VOriginal === 0 || !reaj_DInicio || !reaj_DFim || !reaj_IndiceNome || reaj_Percentual === 0 || !reaj_DConcessao) {
+                return { success: false, message: "Preencha o Valor Base, as Datas, o Índice e o Percentual de Correção." };
+            }
+
+            const V_Mensal_Original = reaj_VUnidade === 'Anual' ? reaj_VOriginal / 12 : reaj_VOriginal;
+            const V_Mensal_Final = V_Mensal_Original * (1 + (reaj_Percentual / 100));
+            
+            const Diferenca_Mensal_Retroativo = V_Mensal_Final - V_Mensal_Original;
+            const D_Inicio_Retroativo = reaj_DFim; 
+            const D_Fim_Retroativo = reaj_DConcessao; 
+            
+            const diasRetroativos = getDaysDifference(D_Inicio_Retroativo, D_Fim_Retroativo);
+            const Total_Retroativo = Diferenca_Mensal_Retroativo * (diasRetroativos / RETROACTIVE_BASE_DAYS);
+            
+            return {
+                success: true,
+                type: 'Reajustamento',
+                V_Mensal_Final: V_Mensal_Final,
+                Total_Retroativo: Total_Retroativo,
+                V_Mensal_Original: V_Mensal_Original,
+                V_Original_Unidade: reaj_VOriginal,
+                V_Unidade: reaj_VUnidade,
+                diasRetroativos: diasRetroativos,
+                D_Inicio: reaj_DInicio,
+                D_Fim: reaj_DFim,
+                Percentual: reaj_Percentual,
+                IndiceNome: reaj_IndiceNome,
+                D_Concessao: reaj_DConcessao,
+                message: `Cálculo concluído. ${diasRetroativos} dias de retroativo calculados (base ${RETROACTIVE_BASE_DAYS}).`
+            };
+        };
+
+
+        // --- LÓGICA DA REPACTUAÇÃO (FLUXO 2) ---
+
+        const calculateRepactuacao = (data) => {
+            const repac_VOriginal = data.repac_VOriginal;
+            const repac_VNovoAprovado = data.repac_VNovoAprovado;
+            const repac_DAniversario = data.repac_DAniversario;
+            const repac_DSolicitacao = data.repac_DSolicitacao;
+            const repac_DProrrogacao = data.repac_DProrrogacao;
+            const repac_DConcessao = data.repac_DConcessao;
+            
+            if (repac_VOriginal === 0 || repac_VNovoAprovado === 0 || !repac_DAniversario || !repac_DSolicitacao || !repac_DConcessao) {
+                 return { success: false, message: "Preencha todos os campos obrigatórios (*Valor Anterior, Novo Valor, Aniversário, Solicitação, Concessão)." };
+            }
+            
+            let preclusaoMessage = null;
+            let Total_Retroativo = 0;
+            const Diferenca_Mensal = repac_VNovoAprovado - repac_VOriginal;
+            let diasRetroativos = 0;
+
+            // 1. Verificação de Preclusão
+            const isPrecluded = repac_DProrrogacao && repac_DProrrogacao !== '' && repac_DSolicitacao > repac_DProrrogacao;
+
+            if (isPrecluded) {
+                preclusaoMessage = "⚠️ Alerta de PRECLUSÃO LÓGICA! A solicitação de repactuação é posterior à data de prorrogação. O direito ao retroativo foi perdido.";
+                Total_Retroativo = 0;
+            } else {
+                
+                // 2. Cálculo do Retroativo (Baseado na Data de Direito)
+                diasRetroativos = getDaysDifference(repac_DAniversario, repac_DConcessao);
+                Total_Retroativo = Diferenca_Mensal * (diasRetroativos / RETROACTIVE_BASE_DAYS);
+
+                if (Diferenca_Mensal <= 0) {
+                     preclusaoMessage = `O novo valor repactuado é MENOR ou IGUAL ao original. Não há retroativo a pagar (${formatCurrency(0)}).`;
+                     Total_Retroativo = 0; 
+                } else if (diasRetroativos <= 0) {
+                     preclusaoMessage = `Não há retroativo a pagar (Concessão no mesmo dia ou antes do Aniversário).`;
+                     Total_Retroativo = 0;
+                } else {
+                    preclusaoMessage = `Retroativo: ${diasRetroativos} dias calculados (base ${RETROACTIVE_BASE_DAYS}) de ${formatDate(repac_DAniversario)} até ${formatDate(repac_DConcessao)}.`;
+                }
+            }
+
+            return {
+                success: true,
+                type: 'Repactuacao',
+                V_Mensal_Final: repac_VNovoAprovado,
+                Total_Retroativo: Total_Retroativo,
+                V_Mensal_Original: repac_VOriginal,
+                diasRetroativos: diasRetroativos,
+                preclusaoMessage: preclusaoMessage,
+                D_Aniversario: repac_DAniversario,
+                D_Solicitacao: repac_DSolicitacao,
+                D_Prorrogacao: repac_DProrrogacao || 'N/A',
+                D_Concessao: repac_DConcessao,
+                Diferenca_Mensal: Diferenca_Mensal
+            };
+        };
+        
+        // --- LÓGICA DO EMPENHO ANUAL (FLUXO 3) - PROPORÇÃO EXATA E MÚLTIPLOS ANOS ---
+
+        window.calculateRenewalEmpenho = () => {
+            const result = window.contractData.lastResult;
+            const formData = collectFormData();
+            const D_Renov_Start_Str = formData.renov_DInicio;
+            const N_Months = formData.renov_Months;
+            const outputArea = document.getElementById('output-empenho-breakdown');
+            outputArea.innerHTML = '';
+
+            if (!result || !result.success) {
+                window.contractData.renewalResult = null;
+                return;
+            }
+
+            if (!D_Renov_Start_Str || N_Months <= 0) {
+                outputArea.innerHTML = '<p class="text-yellow-500 italic">Preencha a data de início e a duração da renovação para o planejamento orçamentário.</p>';
+                window.contractData.renewalResult = null;
+                generateMemoryReport(result);
+                saveContractData(collectFormData());
+                return;
+            }
+            
+            const V_Mensal_Final = result.V_Mensal_Final;
+            const V_Anual_Total = V_Mensal_Final * N_Months;
+
+            const D_Renov_Start = new Date(D_Renov_Start_Str + 'T00:00:00');
+            
+            // Calcula o dia anterior ao fim da vigência
+            const D_Renov_End = new Date(D_Renov_Start);
+            D_Renov_End.setMonth(D_Renov_End.getMonth() + N_Months);
+            D_Renov_End.setDate(D_Renov_End.getDate() - 1);
+            
+            const D_Renov_End_Str = D_Renov_End.toISOString().substring(0, 10);
+            
+            const startYear = D_Renov_Start.getFullYear();
+            const endYear = D_Renov_End.getFullYear();
+            
+            const totalDaysRenewal = getDaysBetweenInclusive(D_Renov_Start_Str, D_Renov_End_Str);
+
+            const empenhoByYear = [];
+            let totalEmpenhoCalculated = 0;
+
+            // Itera por todos os anos fiscais cobertos
+            for (let currentYear = startYear; currentYear <= endYear; currentYear++) {
+                
+                // Define os limites do ano fiscal atual
+                const fiscalYearStartStr = `${currentYear}-01-01`;
+                const fiscalYearEndStr = `${currentYear}-12-31`;
+                
+                // Define o início do segmento: é o início da renovação OU 1º de janeiro
+                const segmentStartStr = (currentYear === startYear) ? D_Renov_Start_Str : fiscalYearStartStr;
+                
+                // Define o fim do segmento: é o fim da renovação OU 31 de dezembro
+                const segmentEndStr = (currentYear === endYear) ? D_Renov_End_Str : fiscalYearEndStr;
+
+                // Calcula os dias exatos que o contrato corre neste ano fiscal
+                const daysInYear = getDaysBetweenInclusive(segmentStartStr, segmentEndStr);
+                
+                let empenhoYear = 0;
+                if (totalDaysRenewal > 0) {
+                    // Cálculo proporcional: Valor Total * (Dias no Ano / Total de Dias da Renovação)
+                    empenhoYear = V_Anual_Total * (daysInYear / totalDaysRenewal);
+                }
+                
+                totalEmpenhoCalculated += empenhoYear;
+
+                // Para visualização de relatório (Meses Fechados + Dias Remanescentes)
+                const fullMonths = Math.floor(daysInYear / RETROACTIVE_BASE_DAYS);
+                const remainingDays = daysInYear % RETROACTIVE_BASE_DAYS;
+
+                empenhoByYear.push({
+                    year: currentYear,
+                    days: daysInYear,
+                    empenho: empenhoYear,
+                    fullMonths: fullMonths,
+                    remainingDays: remainingDays
+                });
+            }
+
+            const renewalResult = {
+                V_Mensal_Final: V_Mensal_Final,
+                V_Anual_Total: V_Anual_Total,
+                D_Renov_Start: D_Renov_Start_Str,
+                D_Renov_End: D_Renov_End_Str,
+                N_Months: N_Months,
+                Total_Dias_Renovacao: totalDaysRenewal,
+                empenhoByYear: empenhoByYear, // Armazena o array de empenhos
+                Total_Empenho_Calculado: totalEmpenhoCalculated
+            };
+
+            window.contractData.renewalResult = renewalResult;
+            saveContractData(collectFormData());
+            
+            // --- Geração do HTML de Saída ---
+            let empenhoHtmlCards = empenhoByYear.map(item => `
+                 <div class="bg-white p-3 rounded-lg border-l-4 border-teal-500 shadow-sm">
+                    <p class="text-sm font-medium text-gray-700">Empenho no Ano Fiscal ${item.year}</p>
+                    <p class="text-xs text-gray-500">(${item.fullMonths} meses + ${item.remainingDays} dias)</p>
+                    <p class="text-xl font-bold text-teal-700">${formatCurrency(item.empenho)}</p>
+                </div>
+            `).join('');
+
+            outputArea.innerHTML = `
+                <div class="bg-gray-100 p-3 rounded-lg">
+                    <p class="text-sm font-medium text-gray-700">Novo Valor Total do Contrato (${N_Months} Meses)</p>
+                    <p class="text-xl font-extrabold text-blue-700">${formatCurrency(V_Anual_Total)}</p>
+                    <p class="text-xs text-gray-500">Período de ${totalDaysRenewal} dias (Cálculo Proporcional Exato)</p>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    ${empenhoHtmlCards}
+                </div>
+                <div class="pt-4 border-t border-gray-300 mt-4 text-right">
+                    <p class="text-sm font-bold text-gray-700">Total Empenhado Calculado: <span class="text-lg text-teal-700">${formatCurrency(totalEmpenhoCalculated)}</span></p>
+                    <p class="text-xs text-gray-500">Conferência: Este valor confere com o Novo Valor Total do Contrato.</p>
+                </div>
+            `;
+            generateMemoryReport(result);
+        };
+
+        window.calculateAndDisplay = (type) => {
+            const formData = collectFormData();
+            let result;
+
+            if (type === 'Reajustamento') {
+                result = calculateReajustamento(formData);
+            } else if (type === 'Repactuacao') {
+                result = calculateRepactuacao(formData);
+            }
+            
+            window.contractData.lastResult = result.success ? result : null;
+            window.contractData.renewalResult = null; 
+            
+            document.getElementById('output-placeholder').classList.add('hidden');
+            document.getElementById('output-novo-valor').classList.add('hidden');
+            document.getElementById('output-retroativo').classList.add('hidden');
+            document.getElementById('output-alerta').classList.add('hidden');
+            document.getElementById('toggle-memory-area').classList.add('hidden');
+            document.getElementById('renovacao-module-container').classList.add('hidden');
+            document.getElementById('output-empenho-breakdown').innerHTML = ''; 
+
+            // Esconde a memória antes de novos resultados
+            document.getElementById('print-area').classList.add('hidden'); 
+            
+            if (!result.success) {
+                document.getElementById('output-placeholder').textContent = result.message;
+                document.getElementById('output-placeholder').classList.remove('hidden');
+                generateMemoryReport(result); // Gera a mensagem de erro na memória
+                saveContractData(collectFormData());
+                return;
+            }
+
+            document.getElementById('output-valor-final').textContent = formatCurrency(result.V_Mensal_Final);
+            document.getElementById('output-novo-valor').classList.remove('hidden');
+            document.getElementById('output-retroativo').classList.remove('hidden');
+            document.getElementById('output-valor-retroativo').textContent = formatCurrency(result.Total_Retroativo);
+            
+            const alertText = result.message || result.preclusaoMessage || '';
+            if (alertText) {
+                document.getElementById('output-alerta').textContent = alertText.replace(/\$/g, '');
+                document.getElementById('output-alerta').classList.remove('hidden');
+            }
+            
+            document.getElementById('renovacao-module-container').classList.remove('hidden');
+            document.getElementById('toggle-memory-area').classList.remove('hidden');
+
+            if (formData.renov_DInicio) {
+                calculateRenewalEmpenho();
+            } else {
+                saveContractData(collectFormData());
+                generateMemoryReport(result);
+            }
+        };
+        
+        window.toggleMemoryVisibility = () => {
+            const memoryArea = document.getElementById('print-area');
+            const toggleButton = document.getElementById('toggle-memory-btn');
+            const isHidden = memoryArea.classList.toggle('hidden');
+            
+            if (isHidden) {
+                toggleButton.innerHTML = '<svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.477 0 8.268 2.943 9.542 7-1.274 4.057-5.065 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path></svg> Ver Memória de Cálculo';
+            } else {
+                toggleButton.innerHTML = '<svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.477 0-8.268-2.943-9.542-7 1.274-4.057 5.065-7 9.542-7 1.258 0 2.47.3 3.57 0"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 12a7 7 0 01-7 7m7-7v-2h-2"></path></svg> Esconder Memória de Cálculo';
+                // Rola para a área de memória ao expandir
+                memoryArea.scrollIntoView({ behavior: 'smooth' });
+            }
+        };
+
+        window.printMemory = () => {
+             // Garante que a memória esteja visível antes de imprimir
+             document.getElementById('print-area').classList.remove('hidden'); 
+             window.print();
+        };
+
+        const generateMemoryReport = (result) => {
+            const memoryContent = document.getElementById('memory-content');
+
+            if (!result || !result.success) {
+                memoryContent.innerHTML = '<p class="text-red-500 italic text-center py-8">Não foi possível gerar a memória de cálculo. Preencha os dados e clique em calcular.</p>';
+                document.getElementById('toggle-memory-area').classList.add('hidden');
+                return;
+            }
+            document.getElementById('toggle-memory-area').classList.remove('hidden');
+
+            let html = '';
+            
+            const V_Mensal_Original_Fmt = formatCurrency(result.V_Mensal_Original);
+            const V_Mensal_Final_Fmt = formatCurrency(result.V_Mensal_Final);
+
+            if (result.type === 'Reajustamento') {
+                const Diferenca_Mensal_Fmt = formatCurrency(result.V_Mensal_Final - result.V_Mensal_Original);
+                const Total_Retroativo_Fmt = formatCurrency(result.Total_Retroativo);
+                const Percentual_Fmt_String = result.Percentual.toFixed(4).replace('.', ',');
+
+                html = `
+                    <div class="space-y-4 text-sm print:text-xs formula-block">
+                        <h4 class="text-lg font-bold text-cyan-700 border-b pb-1 mb-2">1. Detalhes do Reajustamento (Art. 135 da Lei nº 14.133/2021)</h4>
+                        
+                        <div class="grid grid-cols-2 gap-4">
+                            <p><strong>Valor Base Mensal:</strong> ${V_Mensal_Original_Fmt}</p>
+                            <p><strong>Índice Aplicado:</strong> ${result.IndiceNome} (${Percentual_Fmt_String}%)</p>
+                            <p><strong>Período de Correção:</strong> ${formatDate(result.D_Inicio)} a ${formatDate(result.D_Fim)}</p>
+                            <p><strong>Data de Concessão (Pagamento):</strong> ${formatDate(result.D_Concessao)}</p>
+                        </div>
+                        
+                        <div class="p-3 border rounded bg-blue-50 mt-4 formula-block">
+                           <p class="font-semibold text-blue-800">1.1. Fórmula de Atualização do Valor Contratual (Reajuste):</p>
+                           <p class="font-bold text-sm overflow-auto my-2 text-gray-700">
+                                Novo Valor Mensal (${V_Mensal_Final_Fmt}) = Valor Base (${V_Mensal_Original_Fmt}) $\\times$ (1 + $\\frac{\\text{Percentual (${Percentual_Fmt_String} \\%)}}{100}$)
+                           </p>
+                           <p class="font-bold text-lg pt-1">Novo Valor Mensal Reajustado: ${V_Mensal_Final_Fmt}</p>
+                        </div>
+                        
+                        <h4 class="text-lg font-bold text-green-700 pt-4 border-b pb-1 mb-2">2. Cálculo do Retroativo</h4>
+                        
+                        <div class="p-3 border rounded bg-green-50 formula-block">
+                            <p class="font-semibold text-green-800">2.1. Diferença Mensal Devida (Base do Retroativo):</p>
+                            <p class="font-bold text-sm overflow-auto my-2 text-gray-700">
+                                Diferença Mensal = Valor Novo (${V_Mensal_Final_Fmt}) - Valor Base (${V_Mensal_Original_Fmt}) = ${Diferenca_Mensal_Fmt}
+                            </p>
+                            <p class="font-semibold text-green-800 pt-4">2.2. Cálculo da Apropriação por Dias:</p>
+                            <p class="font-bold text-sm overflow-auto my-2 text-gray-700">
+                                Total Retroativo = Diferença Mensal (${Diferenca_Mensal_Fmt}) $\\times$ $\\frac{\\text{Dias Devidos (${result.diasRetroativos} dias)}}{\\text{Base Diária (${RETROACTIVE_BASE_DAYS})}}$
+                            </p>
+                            <p class="font-bold text-lg pt-1">Total Retroativo a Pagar: ${Total_Retroativo_Fmt}</p>
+                        </div>
+                    </div>
+                `;
+            } else if (result.type === 'Repactuacao') {
+                const Diferenca_Mensal_Fmt = formatCurrency(result.Diferenca_Mensal);
+                const Total_Retroativo_Fmt = formatCurrency(result.Total_Retroativo);
+
+                 html = `
+                    <div class="space-y-4 text-sm print:text-xs formula-block">
+                        <h4 class="text-lg font-bold text-cyan-700 border-b pb-1 mb-2">1. Detalhes da Repactuação (Art. 131, IV da Lei nº 14.133/2021)</h4>
+                        
+                        <div class="grid grid-cols-2 gap-4">
+                            <p><strong>Valor Mensal Anterior:</strong> ${V_Mensal_Original_Fmt}</p>
+                            <p><strong>Novo Valor Mensal Aprovado:</strong> ${V_Mensal_Final_Fmt}</p>
+                            <p><strong>Data do Direito (Fato Gerador):</strong> ${formatDate(result.D_Aniversario)}</p>
+                            <p><strong>Data de Concessão (Pagamento):</strong> ${formatDate(result.D_Concessao)}</p>
+                        </div>
+                        
+                        <h5 class="text-base font-bold text-yellow-800 pt-4">Verificação de Preclusão Lógica</h5>
+                        <div class="p-3 border rounded bg-yellow-100 formula-block">
+                           <p class="mt-1"><strong>Data da Prorrogação:</strong> ${formatDate(result.D_Prorrogacao)}</p>
+                           <p class="mt-1"><strong>Data da Solicitação:</strong> ${formatDate(result.D_Solicitacao)}</p>
+                           <p class="mt-2 text-base font-semibold">Status do Retroativo: ${result.preclusaoMessage.replace(/\$/g, '')}</p>
+                        </div>
+                        
+                        <h4 class="text-lg font-bold text-green-700 pt-4 border-b pb-1 mb-2">2. Cálculo do Retroativo</h4>
+                        
+                        <div class="p-3 border rounded bg-green-50 formula-block">
+                           <p class="font-semibold text-green-800">2.1. Diferença Mensal Devida (Base do Retroativo):</p>
+                           <p class="font-bold text-sm overflow-auto my-2 text-gray-700">
+                                Diferença Mensal = Novo Valor Aprovado (${V_Mensal_Final_Fmt}) - Valor Anterior (${V_Mensal_Original_Fmt}) = ${Diferenca_Mensal_Fmt}
+                           </p>
+                           <p class="font-semibold text-green-800 pt-4">2.2. Cálculo da Apropriação por Dias:</p>
+                           <p class="font-bold text-sm overflow-auto my-2 text-gray-700">
+                                Total Retroativo = Diferença Mensal (${Diferenca_Mensal_Fmt}) $\\times$ $\\frac{\\text{Dias Devidos (${result.diasRetroativos} dias)}}{\\text{Base Diária (${RETROACTIVE_BASE_DAYS})}}$
+                           </p>
+                           <p class="font-bold text-lg pt-1">Total Retroativo a Pagar: ${Total_Retroativo_Fmt}</p>
+                        </div>
+                    </div>
+                 `;
+            }
+
+            // --- CÁLCULO SECUNDÁRIO (EMPENHO ANUAL) ---
+            const renewalResult = window.contractData.renewalResult;
+            if (renewalResult) {
+                const V_Anual_Total_Fmt = formatCurrency(renewalResult.V_Anual_Total);
+                
+                let empenhoHTML = `
+                    <div class="space-y-4 text-sm pt-6 mt-6 border-t print:border-t-2 empenho-block">
+                        <h4 class="text-lg font-bold text-teal-700 border-b pb-1 mb-2">3. Planejamento Orçamentário da Renovação</h4>
+                        <p><strong>Valor Total Renovação (${renewalResult.N_Months} Meses):</strong> ${V_Anual_Total_Fmt}</p>
+                        <p><strong>Período Total:</strong> ${formatDate(renewalResult.D_Renov_Start)} a ${formatDate(renewalResult.D_Renov_End)} (${renewalResult.Total_Dias_Renovacao} dias)</p>
+                        
+                        <div class="grid grid-cols-2 gap-4">
+                `;
+                
+                // Adiciona dinamicamente os empenhos por ano fiscal
+                renewalResult.empenhoByYear.forEach(item => {
+                    const Empenho_Fmt = formatCurrency(item.empenho);
+
+                    empenhoHTML += `
+                        <div class="p-3 border rounded bg-teal-50 empenho-block">
+                            <h5 class="text-base font-bold text-teal-800">Empenho Ano Fiscal ${item.year}</h5>
+                            <p>Período Orçamentário: ${item.fullMonths} meses + ${item.remainingDays} dias</p>
+                            
+                            <p class="font-bold text-sm overflow-auto my-2 text-gray-700">
+                                Empenho (${Empenho_Fmt}) = Valor Total Renovação (${V_Anual_Total_Fmt}) $\\times$ $\\frac{\\text{Dias no Ano Fiscal (${item.days} dias)}}{\\text{Total de Dias Renovação (${renewalResult.Total_Dias_Renovacao})}}$
+                            </p>
+                            <p class="font-bold">Valor: ${Empenho_Fmt}</p>
+                        </div>
+                    `;
+                });
+
+                empenhoHTML += `
+                        </div>
+                         <p class="text-sm font-bold text-right pt-2 border-t mt-4">Total Empenhado (Soma dos Anos Fiscais): ${formatCurrency(renewalResult.Total_Empenho_Calculado)}</p>
+                         <p class="text-xs text-right text-gray-600">O valor total empenhado é matematicamente exato (proporcional) e confere com o Valor Total Renovação.</p>
+                    </div>
+                `;
+                html += empenhoHTML;
+            }
+
+            memoryContent.innerHTML = html;
+        };
+        
+        // --- SETUP E INICIALIZAÇÃO FIREBASE ---
+
+        const toggleModuleVisibility = (selectedType) => {
+            const reajuste = document.getElementById('module-reajustamento');
+            const repactuacao = document.getElementById('module-repactuacao');
+            
+            // Corrige o comportamento: se vazio (''), esconde os módulos e mostra o placeholder
+            reajuste.classList.toggle('hidden', selectedType !== 'Reajustamento');
+            repactuacao.classList.toggle('hidden', selectedType !== 'Repactuacao');
+            
+            document.getElementById('module-placeholder').classList.toggle('hidden', selectedType !== '');
+
+            // Esconde resultados ao trocar o tipo de cálculo
+            document.getElementById('output-placeholder').classList.remove('hidden');
+            document.getElementById('output-novo-valor').classList.add('hidden');
+            document.getElementById('output-retroativo').classList.add('hidden');
+            document.getElementById('output-alerta').classList.add('hidden');
+            document.getElementById('toggle-memory-area').classList.add('hidden'); // Esconde o botão de memória
+            document.getElementById('print-area').classList.add('hidden'); // Esconde a memória em si
+            document.getElementById('renovacao-module-container').classList.add('hidden');
+            document.getElementById('output-empenho-breakdown').innerHTML = '';
+            
+            window.contractData.lastResult = null;
+            window.contractData.renewalResult = null;
+            generateMemoryReport(null);
+        };
+
+        const setupEventListeners = () => {
+            document.getElementById('tipoCalculo').addEventListener('change', (e) => {
+                toggleModuleVisibility(e.target.value);
+                saveContractData({ tipoCalculo: e.target.value });
+            });
+
+            document.querySelectorAll('.money-input').forEach(element => {
+                element.addEventListener('input', moneyMask);
+            });
+            
+            document.getElementById('renov_Months').addEventListener('change', (e) => {
+                 window.contractData.renov_Months = parseFloat(e.target.value) || 0;
+                 calculateRenewalEmpenho(); // Cálculo automático
+            });
+            document.getElementById('renov_DInicio').addEventListener('change', (e) => {
+                 window.contractData.renov_DInicio = e.target.value;
+                 calculateRenewalEmpenho(); // Cálculo automático
+            });
+            
+            // toggleModuleVisibility(''); // Removido: A visibilidade inicial é definida após a restauração dos dados.
+        };
+
+        const initFirebase = async () => {
+            
+            if (!persistenceEnabled) {
+                document.getElementById('status-message').textContent = '⚠️ Persistência de Dados Desativada. Os dados não serão salvos ao fechar o arquivo.';
+                document.getElementById('status-message').classList.remove('hidden', 'text-red-600');
+                document.getElementById('status-message').classList.add('text-orange-600');
+                
+                document.getElementById('main-content').classList.remove('hidden');
+                document.getElementById('display-user-id').textContent = 'Local Mode';
+                
+                const initialType = window.contractData.tipoCalculo;
+                toggleModuleVisibility(initialType); // FIX: Chama incondicionalmente para definir o estado inicial
+                
+                if (window.contractData.lastResult) {
+                     calculateAndDisplay(window.contractData.lastResult.type); 
+                } else {
+                     generateMemoryReport(null); 
+                }
+                return;
+            }
+            
+            try {
+                const app = initializeApp(firebaseConfig);
+                db = getFirestore(app);
+                auth = getAuth(app);
+                setLogLevel('debug');
+
+                if (initialAuthToken) {
+                    await signInWithCustomToken(auth, initialAuthToken);
+                } else {
+                    await signInAnonymously(auth);
+                }
+
+                onAuthStateChanged(auth, (user) => {
+                    userId = user ? user.uid : 'anonymous_user';
+                    document.getElementById('display-user-id').textContent = userId;
+                    
+                    const contractRef = doc(db, `artifacts/${appId}/users/${userId}/reajuste_calc`, 'main_state');
+                    onSnapshot(contractRef, (docSnap) => {
+                        document.getElementById('status-message').classList.add('hidden');
+                        document.getElementById('main-content').classList.remove('hidden');
+
+                        const savedData = docSnap.exists() ? docSnap.data() : {};
+                        
+                        const defaultState = { tipoCalculo: '', lastResult: null, renewalResult: null, renov_Months: 12, renov_DInicio: '' };
+                        window.contractData = { ...defaultState, ...savedData };
+
+                        // Restaura a UI
+                        Object.keys(window.contractData).forEach(key => {
+                            const element = document.getElementById(key);
+                            if (element) {
+                                if (element.classList.contains('money-input') && typeof window.contractData[key] === 'number') {
+                                    element.value = (window.contractData[key] || 0).toFixed(2).replace('.', ',');
+                                } else {
+                                    element.value = window.contractData[key];
+                                }
+                            }
+                        });
+
+                        const initialType = window.contractData.tipoCalculo;
+                        toggleModuleVisibility(initialType); // FIX: Chama incondicionalmente para definir o estado inicial
+                        
+                        if (window.contractData.lastResult) {
+                            const result = window.contractData.lastResult;
+                            
+                            // 1. Exibir resultados na UI
+                            document.getElementById('output-valor-final').textContent = formatCurrency(result.V_Mensal_Final);
+                            document.getElementById('output-novo-valor').classList.remove('hidden');
+                            document.getElementById('output-retroativo').classList.remove('hidden');
+                            document.getElementById('output-valor-retroativo').textContent = formatCurrency(result.Total_Retroativo);
+                            
+                            const alertText = result.message || result.preclusaoMessage || '';
+                            if (alertText) {
+                                document.getElementById('output-alerta').textContent = alertText.replace(/\$/g, '');
+                                document.getElementById('output-alerta').classList.remove('hidden');
+                            }
+                            
+                            document.getElementById('renovacao-module-container').classList.remove('hidden');
+                            document.getElementById('toggle-memory-area').classList.remove('hidden');
+                            
+                            // 2. Se houver resultado de empenho, restaura a exibição
+                            if (window.contractData.renewalResult) {
+                                const renewalResult = window.contractData.renewalResult;
+                                const outputArea = document.getElementById('output-empenho-breakdown');
+                                
+                                let empenhoHtmlCards = renewalResult.empenhoByYear.map(item => `
+                                    <div class="bg-white p-3 rounded-lg border-l-4 border-teal-500 shadow-sm">
+                                        <p class="text-sm font-medium text-gray-700">Empenho no Ano Fiscal ${item.year}</p>
+                                        <p class="text-xs text-gray-500">(${item.fullMonths} meses + ${item.remainingDays} dias)</p>
+                                        <p class="text-xl font-bold text-teal-700">${formatCurrency(item.empenho)}</p>
+                                    </div>
+                                `).join('');
+
+                                outputArea.innerHTML = `
+                                    <div class="bg-gray-100 p-3 rounded-lg">
+                                        <p class="text-sm font-medium text-gray-700">Novo Valor Total do Contrato (${renewalResult.N_Months} Meses)</p>
+                                        <p class="text-xl font-extrabold text-blue-700">${formatCurrency(renewalResult.V_Anual_Total)}</p>
+                                        <p class="text-xs text-gray-500">Período de ${renewalResult.Total_Dias_Renovacao} dias (Cálculo Proporcional Exato)</p>
+                                    </div>
+
+                                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        ${empenhoHtmlCards}
+                                    </div>
+                                    <div class="pt-4 border-t border-gray-300 mt-4 text-right">
+                                        <p class="text-sm font-bold text-gray-700">Total Empenhado Calculado: <span class="text-lg text-teal-700">${formatCurrency(renewalResult.Total_Empenho_Calculado)}</span></p>
+                                        <p class="text-xs text-gray-500">Conferência: Este valor confere com o Novo Valor Total do Contrato.</p>
+                                    </div>
+                                `;
+                            }
+                            
+                            // 3. Gera a memória de cálculo
+                            generateMemoryReport(result);
+                        } else {
+                            generateMemoryReport(null); 
+                        }
+                    });
+                });
+                
+            } catch (error) {
+                document.getElementById('status-message').textContent = `⚠️ Erro de Inicialização: ${error.message}`;
+                document.getElementById('status-message').classList.remove('hidden');
+                console.error("Initialization error:", error);
+            }
+        };
+
+        window.onload = () => {
+            document.getElementById('status-message').classList.remove('hidden');
+            document.getElementById('status-message').textContent = 'Conectando ao banco de dados e autenticando...';
+            setupEventListeners();
+            initFirebase();
+        };
+
+    </script>
+</body>
+</html>
