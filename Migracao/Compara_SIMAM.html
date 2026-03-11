@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Comparador SGP vs Betha - TCE-PR</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .field-diff { background-color: #fee2e2; color: #991b1b; border: 1px solid #f87171; border-radius: 2px; }
+        .field-equal { color: #475569; }
+        .code-font { font-family: 'ui-monospace', 'SFMono-Regular', 'Menlo', 'Monaco', 'Consolas', monospace; }
+        
+        .line-number {
+            user-select: none;
+            text-align: right;
+            padding-right: 1rem;
+            color: #94a3b8;
+            border-right: 1px solid #e2e8f0;
+            width: 4.5rem;
+            min-width: 4.5rem;
+            background-color: #f8fafc;
+        }
+
+        .field-block {
+            display: inline-block;
+            padding: 0 4px;
+            white-space: pre;
+            transition: all 0.2s;
+        }
+        
+        .field-block:hover {
+            background-color: #f1f5f9;
+        }
+
+        .pipe-separator {
+            color: #cbd5e1;
+            font-weight: bold;
+            user-select: none;
+        }
+
+        .row-missing { background-color: #fef2f2; }
+        .row-new { background-color: #f0fdf4; }
+        
+        /* Tooltip style */
+        .field-block[title]:hover::after {
+            content: attr(title);
+            position: absolute;
+            background: #1e293b;
+            color: white;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 10px;
+            z-index: 50;
+            margin-top: -25px;
+        }
+
+        /* Modal Overlay */
+        #confirmModal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 100;
+            align-items: center;
+            justify-content: center;
+        }
+    </style>
+</head>
+<body class="bg-slate-50 min-h-screen p-4 md:p-8">
+
+    <!-- Modal de Confirmação de Nome de Arquivo -->
+    <div id="confirmModal">
+        <div class="bg-white rounded-xl shadow-2xl p-6 max-w-md w-full mx-4">
+            <div class="flex items-center text-amber-500 mb-4">
+                <svg class="w-10 h-10 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+                <h3 class="text-xl font-bold text-slate-800">Aviso de Divergência</h3>
+            </div>
+            <p class="text-slate-600 mb-6">Os documentos enviados não possuem o mesmo nome. Deseja continuar a comparação mesmo assim?</p>
+            <div class="flex space-x-3 justify-end">
+                <button id="cancelCompare" class="px-4 py-2 text-sm font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors">Não, cancelar</button>
+                <button id="proceedCompare" class="px-4 py-2 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors shadow-md">Sim, continuar</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="max-w-full mx-auto">
+        <!-- Cabeçalho -->
+        <div class="bg-white rounded-xl shadow-sm p-6 mb-6 border border-slate-200">
+            <div class="flex items-center justify-between mb-4">
+                <h1 class="text-2xl font-bold text-slate-800 flex items-center">
+                    <svg class="w-8 h-8 mr-3 text-blue-600 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+                    </svg>
+                    Comparador SGP vs Betha (SIM-AM 2026)
+                </h1>
+                <div class="flex items-center space-x-2">
+                    <span class="text-xs font-bold text-slate-400 uppercase">Validação de Migração:</span>
+                    <span class="bg-blue-100 text-blue-700 text-[10px] px-2 py-0.5 rounded-full font-bold uppercase">SGP → Betha</span>
+                </div>
+            </div>
+            
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-4 bg-slate-50 p-4 rounded-lg border border-slate-200">
+                <!-- Configuração de Chave Única -->
+                <div class="col-span-3">
+                    <label class="block text-xs font-bold text-slate-600 uppercase mb-1">Campos Identificadores (Chave Única)</label>
+                    <input type="text" id="keyIndexes" value="1,4,5" class="w-full p-2 text-sm border rounded focus:ring-2 focus:ring-blue-500 outline-none font-mono" placeholder="Ex: 1,4,5 (ID Entidade, Número, Ano)">
+                    <p class="text-[10px] text-slate-500 mt-1 italic">Informe os índices dos campos que juntos identificam um registro (separados por vírgula).</p>
+                </div>
+                
+                <!-- Codificação -->
+                <div class="col-span-1">
+                    <label class="block text-xs font-bold text-slate-600 uppercase mb-1">Codificação</label>
+                    <select id="encodingSelect" class="w-full p-2 text-sm border rounded bg-white outline-none">
+                        <option value="ISO-8859-1">ISO-8859-1 (SGP/TCE)</option>
+                        <option value="UTF-8">UTF-8 (Moderno)</option>
+                        <option value="windows-1252">Windows-1252</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <!-- Inputs de Arquivos -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+            <div class="bg-white p-5 rounded-xl shadow-sm border border-slate-200">
+                <label class="block text-sm font-semibold text-slate-700 mb-2 flex justify-between">
+                    Arquivos SGP (Origem)
+                    <span id="lineCountA" class="text-xs font-normal text-slate-400"></span>
+                </label>
+                <div id="dropA" class="border-2 border-dashed border-slate-200 rounded-lg p-4 text-center hover:border-blue-400 transition-colors cursor-pointer bg-slate-50">
+                    <p class="text-xs text-slate-500" id="nameA">Arraste o TXT do SGP aqui</p>
+                    <input type="file" id="fileA" class="hidden" accept=".txt">
+                </div>
+                <textarea id="textA" class="w-full h-32 mt-4 p-3 text-[10px] code-font border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none leading-relaxed" placeholder="Conteúdo gerado pelo SGP..."></textarea>
+            </div>
+
+            <div class="bg-white p-5 rounded-xl shadow-sm border border-slate-200">
+                <label class="block text-sm font-semibold text-slate-700 mb-2 flex justify-between">
+                    Arquivos Betha (Destino)
+                    <span id="lineCountB" class="text-xs font-normal text-slate-400"></span>
+                </label>
+                <div id="dropB" class="border-2 border-dashed border-slate-200 rounded-lg p-4 text-center hover:border-blue-400 transition-colors cursor-pointer bg-slate-50">
+                    <p class="text-xs text-slate-500" id="nameB">Arraste o TXT da Betha aqui</p>
+                    <input type="file" id="fileB" class="hidden" accept=".txt">
+                </div>
+                <textarea id="textB" class="w-full h-32 mt-4 p-3 text-[10px] code-font border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none leading-relaxed" placeholder="Conteúdo gerado pela Betha..."></textarea>
+            </div>
+        </div>
+
+        <div class="flex justify-center space-x-4 mb-8">
+            <button id="compareBtn" class="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 rounded-lg font-bold shadow-lg transition-all flex items-center">
+                <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+                </svg>
+                Comparar Registros
+            </button>
+            <button id="clearBtn" class="bg-white hover:bg-slate-50 text-slate-600 px-6 py-3 rounded-lg font-bold transition-all flex items-center border border-slate-300">
+                <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                </svg>
+                Nova Comparação
+            </button>
+        </div>
+
+        <!-- Resultados -->
+        <div id="resultContainer" class="hidden space-y-4">
+            <!-- Estatísticas -->
+            <div class="grid grid-cols-2 md:grid-cols-5 gap-4">
+                <div class="bg-white p-4 rounded-lg border-l-4 border-green-500 shadow-sm">
+                    <p class="text-[10px] text-slate-500 uppercase font-bold tracking-wider">Iguais</p>
+                    <p id="statEqual" class="text-xl font-bold text-slate-800">0</p>
+                </div>
+                <div class="bg-white p-4 rounded-lg border-l-4 border-yellow-500 shadow-sm">
+                    <p class="text-[10px] text-slate-500 uppercase font-bold tracking-wider">Divergentes</p>
+                    <p id="statDiff" class="text-xl font-bold text-slate-800">0</p>
+                </div>
+                <div class="bg-white p-4 rounded-lg border-l-4 border-red-500 shadow-sm">
+                    <p class="text-[10px] text-slate-500 uppercase font-bold tracking-wider">Ausentes Betha</p>
+                    <p id="statMissing" class="text-xl font-bold text-slate-800">0</p>
+                </div>
+                <div class="bg-white p-4 rounded-lg border-l-4 border-blue-400 shadow-sm">
+                    <p class="text-[10px] text-slate-500 uppercase font-bold tracking-wider">Novos Betha</p>
+                    <p id="statNew" class="text-xl font-bold text-slate-800">0</p>
+                </div>
+                <div class="bg-white p-4 rounded-lg border-l-4 border-slate-400 shadow-sm">
+                    <p class="text-[10px] text-slate-500 uppercase font-bold tracking-wider">Total Chaves</p>
+                    <p id="statTotal" class="text-xl font-bold text-slate-800">0</p>
+                </div>
+            </div>
+
+            <!-- Lista de Divergências -->
+            <div class="bg-white rounded-xl shadow-lg border border-slate-200 overflow-hidden">
+                <div class="bg-slate-800 text-white p-3 text-xs font-bold flex justify-between px-6 items-center">
+                    <span class="flex items-center">
+                        <svg class="w-4 h-4 mr-2 text-amber-400" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"></path></svg>
+                        DETALHAMENTO LADO A LADO (SGP vs BETHA)
+                    </span>
+                    <label class="flex items-center cursor-pointer">
+                        <input type="checkbox" id="showOnlyErrors" class="form-checkbox h-3 w-3 text-blue-600 rounded border-slate-600 bg-slate-700">
+                        <span class="ml-2 text-[10px] text-slate-300">Filtrar apenas divergências</span>
+                    </label>
+                </div>
+                <div id="diffContent" class="overflow-hidden bg-white"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Referências UI
+        const fileA = document.getElementById('fileA');
+        const fileB = document.getElementById('fileB');
+        const textA = document.getElementById('textA');
+        const textB = document.getElementById('textB');
+        const dropA = document.getElementById('dropA');
+        const dropB = document.getElementById('dropB');
+        const nameA = document.getElementById('nameA');
+        const nameB = document.getElementById('nameB');
+        const lineCountA = document.getElementById('lineCountA');
+        const lineCountB = document.getElementById('lineCountB');
+        
+        const compareBtn = document.getElementById('compareBtn');
+        const clearBtn = document.getElementById('clearBtn');
+        const resultContainer = document.getElementById('resultContainer');
+        const encodingSelect = document.getElementById('encodingSelect');
+        const keyIndexesInput = document.getElementById('keyIndexes');
+        const showOnlyErrors = document.getElementById('showOnlyErrors');
+
+        // Modal UI
+        const confirmModal = document.getElementById('confirmModal');
+        const proceedCompare = document.getElementById('proceedCompare');
+        const cancelCompare = document.getElementById('cancelCompare');
+
+        // Stats UI
+        const statEqual = document.getElementById('statEqual');
+        const statDiff = document.getElementById('statDiff');
+        const statMissing = document.getElementById('statMissing');
+        const statNew = document.getElementById('statNew');
+        const statTotal = document.getElementById('statTotal');
+        const diffContent = document.getElementById('diffContent');
+
+        let lastFileA = null, lastFileB = null;
+
+        const setupDrop = (dropZone, fileInput, nameDisplay, textArea, labelDisplay, side) => {
+            dropZone.onclick = () => fileInput.click();
+            dropZone.ondragover = (e) => { e.preventDefault(); dropZone.classList.add('border-blue-400', 'bg-blue-50'); };
+            dropZone.ondragleave = () => dropZone.classList.remove('border-blue-400', 'bg-blue-50');
+            dropZone.ondrop = (e) => {
+                e.preventDefault();
+                dropZone.classList.remove('border-blue-400', 'bg-blue-50');
+                const file = e.dataTransfer.files[0];
+                if (side === 'A') lastFileA = file; else lastFileB = file;
+                handleFile(file, nameDisplay, textArea, labelDisplay);
+            };
+            fileInput.onchange = (e) => {
+                const file = e.target.files[0];
+                if (side === 'A') lastFileA = file; else lastFileB = file;
+                handleFile(file, nameDisplay, textArea, labelDisplay);
+            };
+        };
+
+        const handleFile = (file, display, textArea, labelDisplay) => {
+            if (!file) return;
+            display.innerText = file.name;
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const content = e.target.result;
+                textArea.value = content;
+                const count = content.split(/\r?\n/).filter(l => l.trim() !== "").length;
+                labelDisplay.innerText = `${count} registros encontrados`;
+            };
+            reader.readAsText(file, encodingSelect.value);
+        };
+
+        encodingSelect.onchange = () => {
+            if (lastFileA) handleFile(lastFileA, nameA, textA, lineCountA);
+            if (lastFileB) handleFile(lastFileB, nameB, textB, lineCountB);
+        };
+
+        setupDrop(dropA, fileA, nameA, textA, lineCountA, 'A');
+        setupDrop(dropB, fileB, nameB, textB, lineCountB, 'B');
+
+        clearBtn.onclick = () => {
+            textA.value = ''; textB.value = ''; fileA.value = ''; fileB.value = '';
+            lastFileA = null; lastFileB = null;
+            nameA.innerText = 'Arraste o TXT do SGP aqui';
+            nameB.innerText = 'Arraste o TXT da Betha aqui';
+            lineCountA.innerText = ''; lineCountB.innerText = '';
+            resultContainer.classList.add('hidden');
+            diffContent.innerHTML = '';
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        };
+
+        function generateKey(line, indexes) {
+            const fields = line.split('|');
+            return indexes.map(idx => (fields[idx-1] || '').trim()).join('|');
+        }
+
+        // Intercepta o clique de comparação para validar nomes
+        compareBtn.onclick = () => {
+            if (lastFileA && lastFileB && lastFileA.name !== lastFileB.name) {
+                confirmModal.style.display = 'flex';
+            } else {
+                runComparison();
+            }
+        };
+
+        proceedCompare.onclick = () => {
+            confirmModal.style.display = 'none';
+            runComparison();
+        };
+
+        cancelCompare.onclick = () => {
+            confirmModal.style.display = 'none';
+        };
+
+        function runComparison() {
+            const linesA = textA.value.split(/\r?\n/).filter(l => l.trim() !== "");
+            const linesB = textB.value.split(/\r?\n/).filter(l => l.trim() !== "");
+            const keyIdxs = keyIndexesInput.value.split(',').map(n => parseInt(n.trim())).filter(n => !isNaN(n));
+
+            if (linesA.length === 0 && linesB.length === 0) return;
+
+            const mapA = new Map();
+            linesA.forEach((line, idx) => {
+                const key = generateKey(line, keyIdxs);
+                mapA.set(key, { line, originalIdx: idx + 1 });
+            });
+
+            const mapB = new Map();
+            linesB.forEach((line, idx) => {
+                const key = generateKey(line, keyIdxs);
+                mapB.set(key, { line, originalIdx: idx + 1 });
+            });
+
+            const allKeys = new Set([...mapA.keys(), ...mapB.keys()]);
+            const sortedKeys = Array.from(allKeys).sort((a, b) => {
+                const itemA = mapA.get(a), itemB = mapA.get(b);
+                if (itemA && itemB) return itemA.originalIdx - itemB.originalIdx;
+                return itemA ? -1 : 1;
+            });
+            
+            let html = '';
+            let stats = { equal: 0, diff: 0, missing: 0, added: 0 };
+            const onlyErrors = showOnlyErrors.checked;
+
+            sortedKeys.forEach(key => {
+                const entryA = mapA.get(key);
+                const entryB = mapB.get(key);
+                
+                let rowBg = 'bg-white', statusMsg = '', isError = false;
+
+                if (entryA && entryB) {
+                    if (entryA.line === entryB.line) {
+                        stats.equal++;
+                        statusMsg = '<span class="text-green-600">✓ Idêntica</span>';
+                    } else {
+                        stats.diff++; isError = true;
+                        rowBg = 'bg-amber-50';
+                        statusMsg = '<span class="text-red-500 font-bold">● Divergente</span>';
+                    }
+                } else if (entryA) {
+                    stats.missing++; isError = true;
+                    rowBg = 'bg-red-50';
+                    statusMsg = '<span class="text-red-600 font-bold">✖ Ausente na Betha</span>';
+                } else {
+                    stats.added++; isError = true;
+                    rowBg = 'bg-blue-50';
+                    statusMsg = '<span class="text-blue-600 font-bold">✚ Novo na Betha</span>';
+                }
+
+                if (onlyErrors && !isError) return;
+
+                html += `<div class="flex flex-col border-b border-slate-100 ${rowBg}">
+                    <div class="flex items-center bg-slate-100/40 px-3 py-1.5 text-[9px] font-bold text-slate-500">
+                        <span class="bg-slate-200 px-2 py-0.5 rounded text-slate-700 mr-3 uppercase">Chave: ${key}</span>
+                        <span>${statusMsg}</span>
+                        ${entryA && entryB && entryA.originalIdx !== entryB.originalIdx ? `<span class="ml-auto text-slate-400">Origem: L${entryA.originalIdx} → Destino: L${entryB.originalIdx}</span>` : ''}
+                    </div>`;
+
+                [ {l: 'SGP', d: entryA}, {l: 'BETHA', d: entryB} ].forEach(side => {
+                    html += `<div class="flex w-full group">
+                        <div class="line-number text-[8px] flex items-center justify-end font-bold opacity-50">${side.l}</div>
+                        <div class="flex-1 p-2 code-font text-[11px] whitespace-nowrap overflow-x-auto">`;
+                    
+                    if (side.d) {
+                        const fields = side.d.line.split('|');
+                        const otherLine = (side.l === 'SGP' ? entryB?.line : entryA?.line);
+                        const otherFields = otherLine ? otherLine.split('|') : [];
+                        
+                        fields.forEach((val, j) => {
+                            const isDiff = entryA && entryB && val !== otherFields[j];
+                            html += `<span class="field-block ${isDiff ? 'field-diff' : 'field-equal'}" title="Campo ${j+1}: ${val}">${val}</span>`;
+                            if (j < fields.length - 1) html += `<span class="pipe-separator">|</span>`;
+                        });
+                    } else {
+                        html += `<span class="text-slate-300 italic opacity-50">[NÃO LOCALIZADO]</span>`;
+                    }
+                    html += `</div></div>`;
+                });
+                html += `</div>`;
+            });
+
+            diffContent.innerHTML = html || '<div class="p-8 text-center text-slate-400">Nenhuma divergência encontrada.</div>';
+            statEqual.innerText = stats.equal;
+            statDiff.innerText = stats.diff;
+            statMissing.innerText = stats.missing;
+            statNew.innerText = stats.added;
+            statTotal.innerText = allKeys.size;
+            
+            resultContainer.classList.remove('hidden');
+            resultContainer.scrollIntoView({ behavior: 'smooth' });
+        }
+
+        showOnlyErrors.onchange = () => {
+            if (resultContainer.classList.contains('hidden')) return;
+            runComparison();
+        };
+    </script>
+</body>
+</html>
