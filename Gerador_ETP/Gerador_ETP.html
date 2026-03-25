@@ -43,7 +43,6 @@
     <script type="text/babel">
         const { useState, useEffect, useRef, Fragment } = React;
 
-        // Componente de Ícones SVG Inline - Corrigido para evitar erros de sintaxe Babel
         const Icon = ({ name, size = 16, className = "" }) => {
             const icons = {
                 FileText: (
@@ -163,7 +162,8 @@
             );
         };
 
-        const apiKey = "AIzaSyBbqfMpvYI8UCFG7B4PiYzAnaklphZYZ-U"; // IMPORTANTE: Sua chave vai aqui
+        // --- CONFIGURAÇÃO ---
+        const apiKey = "AIzaSyBbqfMpvYI8UCFG7B4PiYzAnaklphZYZ-U"; // <--- INSIRA SUA CHAVE AQUI
         const GEMINI_MODEL = "gemini-2.5-flash-preview-09-2025";
 
         const SYSTEM_PROMPT = `Você é um consultor jurídico especializado em licitações (Lei 14.133/21). 
@@ -171,7 +171,7 @@
         1. Forneça APENAS o texto técnico do tópico solicitado.
         2. NÃO use formatação Markdown (sem #, sem **, sem *, sem >).
         3. NÃO inclua introduções ou conclusões.
-        4. NÃO inclua títulos ou o nome do tópico no início da resposta.
+        4. NÃO inclua títulos no início.
         5. Use linguagem formal, impessoal e técnica.
         6. Se houver listas, use hífens (-) ou letras (a, b, c).`;
 
@@ -185,7 +185,7 @@
             const [isGenerating, setIsGenerating] = useState(null);
             const [isSaved, setIsSaved] = useState(false);
             const [viewMode, setViewMode] = useState('edit');
-            const [showApiKeyAlert, setShowApiKeyAlert] = useState(false);
+            const [apiError, setApiError] = useState(null);
 
             useEffect(() => {
                 const savedData = localStorage.getItem('etp_pro_web_clean_v3');
@@ -203,61 +203,66 @@
 
             const callGemini = async (payload, retries = 5, delay = 1000) => {
                 if (!apiKey) {
-                    setShowApiKeyAlert(true);
-                    throw new Error("Chave de API não configurada");
+                    throw new Error("Chave de API não configurada no código-fonte.");
                 }
+
                 try {
                     const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify(payload)
                     });
+
                     if (!response.ok) {
-                        if (retries > 0 && response.status >= 500) {
+                        const errorData = await response.json().catch(() => ({}));
+                        const errorMsg = errorData.error?.message || response.statusText;
+                        
+                        // Se for erro de quota ou servidor, tentar retry
+                        if (retries > 0 && (response.status === 429 || response.status >= 500)) {
                             await new Promise(r => setTimeout(r, delay));
                             return callGemini(payload, retries - 1, delay * 2);
                         }
-                        throw new Error('Falha na API');
+                        
+                        throw new Error(`Erro ${response.status}: ${errorMsg}`);
                     }
+
                     const data = await response.json();
-                    return data.candidates?.[0]?.content?.parts?.[0]?.text;
+                    const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+                    
+                    if (!text) throw new Error("A IA retornou uma resposta vazia.");
+                    return text;
+
                 } catch (err) {
-                    if (err.message === "Chave de API não configurada") throw err;
-                    if (retries > 0) {
-                        await new Promise(r => setTimeout(r, delay));
-                        return callGemini(payload, retries - 1, delay * 2);
-                    }
                     throw err;
                 }
             };
 
             const handleAiAssist = async (fieldId) => {
+                setApiError(null);
                 setIsGenerating(fieldId);
-                const fieldName = structure.find(s => s.id === fieldId)?.label;
                 
-                const prompt = `Escreva o texto técnico para a seção "${fieldName}" de um Estudo Técnico Preliminar oficial.
+                const fieldName = structure.find(s => s.id === fieldId)?.label;
+                const prompt = `Escreva o texto técnico para a seção "${fieldName}" de um Estudo Técnico Preliminar.
                 CONTEXTO:
                 Objeto: ${formData.objeto}
                 Necessidade: ${formData.necessidade}
-                
-                Se houver rascunho: "${formData[fieldId]}". Retorne apenas o texto técnico limpo.`;
+                Rascunho atual: "${formData[fieldId]}"`;
 
                 try {
                     const result = await callGemini({
                         contents: [{ parts: [{ text: prompt }] }],
                         systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] }
                     });
-                    if (result) {
-                        setFormData(prev => ({ ...prev, [fieldId]: result.trim().replace(/^[`\s]+|[`\s]+$/g, '') }));
-                    }
+                    setFormData(prev => ({ ...prev, [fieldId]: result.trim() }));
                 } catch (err) {
-                    console.error(err);
+                    setApiError(err.message);
                 } finally {
                     setIsGenerating(null);
                 }
             };
 
             const handleGlobalGenerate = async () => {
+                setApiError(null);
                 setIsGenerating('global');
                 const prompt = `Refine todo o ETP abaixo para conformidade com a Lei 14.133/21. Remova redundâncias. DADOS: ${JSON.stringify(formData)}`;
 
@@ -278,15 +283,13 @@
                                 }
                             }
                         },
-                        systemInstruction: { parts: [{ text: "Você é um revisor de documentos oficiais. Retorne APENAS o JSON estruturado." }] }
+                        systemInstruction: { parts: [{ text: "Você é um revisor oficial. Retorne JSON puro." }] }
                     });
-                    if (resultText) {
-                        const cleanJson = resultText.replace(/```json|```/g, '').trim();
-                        setFormData(JSON.parse(cleanJson));
-                        setViewMode('preview');
-                    }
+                    const cleanJson = resultText.replace(/```json|```/g, '').trim();
+                    setFormData(JSON.parse(cleanJson));
+                    setViewMode('preview');
                 } catch (err) {
-                    console.error(err);
+                    setApiError(err.message);
                 } finally {
                     setIsGenerating(null);
                 }
@@ -311,20 +314,20 @@
                     <header className="bg-white border-b border-slate-200 sticky top-0 z-40 no-print shadow-sm">
                         <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
                             <div className="flex items-center gap-3">
-                                <div className="bg-indigo-600 p-2 rounded-xl text-white shadow-lg shadow-indigo-100">
+                                <div className="bg-indigo-600 p-2 rounded-xl text-white shadow-lg">
                                     <Icon name="Wand2" size={18} />
                                 </div>
                                 <h1 className="text-sm font-black uppercase tracking-tight">ETP Digital <span className="text-indigo-600">Pro</span></h1>
                             </div>
                             <div className="flex items-center gap-2">
-                                <button onClick={() => setViewMode(viewMode === 'edit' ? 'preview' : 'edit')} className="flex items-center gap-2 bg-slate-100 px-4 py-2 rounded-lg text-xs font-bold hover:bg-slate-200 transition-all">
+                                <button onClick={() => setViewMode(viewMode === 'edit' ? 'preview' : 'edit')} className="flex items-center gap-2 bg-slate-100 px-4 py-2 rounded-lg text-xs font-bold hover:bg-slate-200">
                                     {viewMode === 'edit' ? <Fragment><Icon name="Eye" size={14} /> Visualizar</Fragment> : <Fragment><Icon name="Edit3" size={14} /> Editar</Fragment>}
                                 </button>
-                                <button onClick={handleGlobalGenerate} disabled={!!isGenerating} className={`flex items-center gap-2 bg-indigo-50 text-indigo-700 px-4 py-2 rounded-lg text-xs font-bold hover:bg-indigo-100 border border-indigo-200 transition-all disabled:opacity-50 ${!isGenerating ? 'ai-glow' : ''}`}>
+                                <button onClick={handleGlobalGenerate} disabled={!!isGenerating} className="flex items-center gap-2 bg-indigo-50 text-indigo-700 px-4 py-2 rounded-lg text-xs font-bold hover:bg-indigo-100 border border-indigo-200 disabled:opacity-50">
                                     {isGenerating === 'global' ? <Icon name="Loader2" size={14} /> : <Icon name="Sparkles" size={14} />}
                                     Polimento Final
                                 </button>
-                                <button onClick={() => window.print()} className="flex items-center gap-2 bg-slate-800 text-white px-4 py-2 rounded-lg text-xs font-bold hover:bg-black transition-all shadow-md">
+                                <button onClick={() => window.print()} className="flex items-center gap-2 bg-slate-800 text-white px-4 py-2 rounded-lg text-xs font-bold hover:bg-black">
                                     <Icon name="Printer" size={16} /> PDF
                                 </button>
                             </div>
@@ -332,14 +335,14 @@
                     </header>
 
                     <main className="max-w-6xl mx-auto px-6 mt-8 no-print">
-                        {showApiKeyAlert && (
-                            <div className="mb-6 bg-amber-50 border border-amber-200 p-4 rounded-2xl flex items-center gap-4 text-amber-800 animate-in fade-in slide-in-from-top duration-300">
-                                <Icon name="AlertTriangle" size={24} />
-                                <div>
-                                    <p className="font-bold text-sm">Chave de API ausente</p>
-                                    <p className="text-xs opacity-80">As funções de IA requerem uma chave configurada no arquivo index.html.</p>
+                        {apiError && (
+                            <div className="mb-6 bg-red-50 border border-red-200 p-4 rounded-2xl flex items-center gap-4 text-red-800 animate-in fade-in slide-in-from-top">
+                                <Icon name="AlertTriangle" size={24} className="flex-shrink-0" />
+                                <div className="flex-1">
+                                    <p className="font-bold text-sm">Problema com a IA</p>
+                                    <p className="text-xs opacity-80">{apiError}</p>
                                 </div>
-                                <button onClick={() => setShowApiKeyAlert(false)} className="ml-auto p-1 hover:bg-amber-100 rounded">OK</button>
+                                <button onClick={() => setApiError(null)} className="p-1 hover:bg-red-100 rounded">OK</button>
                             </div>
                         )}
 
@@ -347,10 +350,7 @@
                             <div className="flex flex-col lg:flex-row gap-8">
                                 <aside className="hidden lg:block w-64 space-y-1 sticky top-24 h-fit">
                                     {structure.map(item => (
-                                        <button key={item.id} onClick={() => {
-                                            const el = document.getElementById(item.id);
-                                            if (el) el.scrollIntoView({behavior:'smooth', block:'center'});
-                                        }} className="w-full text-left px-4 py-2 rounded-xl text-[11px] font-bold text-slate-500 hover:bg-white hover:text-indigo-600 transition-all flex items-center justify-between group">
+                                        <button key={item.id} onClick={() => document.getElementById(item.id)?.scrollIntoView({behavior:'smooth', block:'center'})} className="w-full text-left px-4 py-2 rounded-xl text-[11px] font-bold text-slate-500 hover:bg-white hover:text-indigo-600 transition-all flex items-center justify-between group">
                                             <span className="flex items-center gap-2">
                                                 <Icon name={item.icon} size={14} className="opacity-50 group-hover:opacity-100" />
                                                 {item.label}
@@ -364,13 +364,13 @@
                                         <div key={item.id} id={item.id} className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden scroll-mt-24">
                                             <div className="px-6 py-3 bg-slate-50 border-b flex justify-between items-center">
                                                 <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-400">{item.label}</h3>
-                                                <button onClick={() => handleAiAssist(item.id)} disabled={isGenerating !== null} className="text-[9px] font-black text-indigo-600 uppercase bg-white border border-indigo-100 px-3 py-1.5 rounded-full hover:bg-indigo-50 transition-all shadow-sm flex items-center gap-2">
+                                                <button onClick={() => handleAiAssist(item.id)} disabled={isGenerating !== null} className="text-[9px] font-black text-indigo-600 uppercase bg-white border border-indigo-100 px-3 py-1.5 rounded-full hover:bg-indigo-50 flex items-center gap-2 shadow-sm">
                                                     {isGenerating === item.id ? <Icon name="Loader2" size={10} /> : <Icon name="Sparkles" size={10} />}
-                                                    Gerar Texto Limpo
+                                                    Gerar com IA
                                                 </button>
                                             </div>
                                             <div className="p-6">
-                                                <textarea value={formData[item.id]} onChange={(e) => setFormData({...formData, [item.id]: e.target.value})} className="textarea-clean min-h-[140px]" placeholder="Aguardando conteúdo..."/>
+                                                <textarea value={formData[item.id]} onChange={(e) => setFormData({...formData, [item.id]: e.target.value})} className="textarea-clean min-h-[140px]" placeholder="Escreva aqui ou use a IA..."/>
                                             </div>
                                         </div>
                                     ))}
@@ -379,14 +379,13 @@
                         ) : (
                             <div className="bg-white shadow-2xl p-16 border border-slate-200 max-w-4xl mx-auto etp-doc rounded-3xl animate-in fade-in duration-500">
                                 <div className="text-center mb-12 border-b-2 border-black pb-8">
-                                    <div className="w-16 h-16 border-2 border-black flex items-center justify-center mx-auto mb-4 text-[8px] font-black uppercase">Brasão</div>
                                     <h1 className="text-xl font-bold uppercase underline">Estudo Técnico Preliminar (ETP)</h1>
                                     <p className="text-xs font-bold mt-2">Lei nº 14.133/2021</p>
                                 </div>
                                 {structure.map(item => (
                                     <div key={item.id} className="mb-10">
                                         <h2 className="text-sm font-bold uppercase border-b border-black mb-4 pb-1">{item.label}</h2>
-                                        <p className="text-sm text-justify leading-relaxed">{formData[item.id] || "Seção pendente de preenchimento."}</p>
+                                        <p className="text-sm text-justify leading-relaxed">{formData[item.id] || "Pendente."}</p>
                                     </div>
                                 ))}
                             </div>
@@ -401,17 +400,17 @@
                         {structure.map(item => (
                             <div key={item.id} style={{marginBottom: '25px'}}>
                                 <h2>{item.label}</h2>
-                                <p>{formData[item.id] || "DADO NÃO INFORMADO."}</p>
+                                <p>{formData[item.id] || "Não preenchido."}</p>
                             </div>
                         ))}
                     </div>
 
                     {isGenerating === 'global' && (
                         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-50 no-print">
-                            <div className="bg-white p-10 rounded-3xl shadow-2xl text-center max-w-xs animate-in zoom-in duration-300">
+                            <div className="bg-white p-10 rounded-3xl shadow-2xl text-center max-w-xs animate-in zoom-in">
                                 <Icon name="Loader2" size={40} className="mx-auto mb-4 text-indigo-600" />
                                 <h3 className="font-black text-slate-800 uppercase tracking-tighter text-lg">Consolidando</h3>
-                                <p className="text-slate-500 text-xs font-medium">Limpando rascunhos e aplicando normas da Lei 14.133/21...</p>
+                                <p className="text-slate-500 text-xs font-medium">Revisando rascunhos com IA...</p>
                             </div>
                         </div>
                     )}
