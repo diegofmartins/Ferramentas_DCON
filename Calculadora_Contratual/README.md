@@ -1,20 +1,46 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+# Calculadora de Reajustes Contratuais (Lei 14.133)
 
-# Run and deploy your AI Studio app
+Esta é uma ferramenta profissional para cálculo de reajustes, repactuações e planejamento de empenho anual de contratos públicos brasileiros.
 
-This contains everything you need to run your app locally.
+## Como hospedar no GitHub Pages
 
-View your app in AI Studio: https://ai.studio/apps/3bc2398f-fbda-4c14-8dbf-1f78399c27a1
+Este projeto já está configurado para ser hospedado em:
+`https://diegofmartins.github.io/Ferramentas_DCON/Calculadora_Contratual/`
 
-## Run Locally
+### Passos para Configuração:
 
-**Prerequisites:**  Node.js
+1. **Crie o Repositório no GitHub:**
+   - Crie um repositório chamado `Ferramentas_DCON`.
+   - Suba os arquivos deste projeto para uma pasta chamada `Calculadora_Contratual` dentro desse repositório (ou suba na raiz se o repositório for apenas para a calculadora).
+   - *Nota:* Se você subir na raiz de um repositório chamado `Calculadora_Contratual`, o endereço será `https://diegofmartins.github.io/Calculadora_Contratual/`. Se mudar o nome, lembre-se de ajustar o `base` no arquivo `vite.config.ts`.
 
+2. **Configure a API Key do Gemini:**
+   - No seu repositório no GitHub, vá em **Settings** > **Secrets and variables** > **Actions**.
+   - Clique em **New repository secret**.
+   - Nome: `GEMINI_API_KEY`
+   - Valor: Sua chave da API do Google AI Studio (Gemini).
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+3. **Ative o GitHub Pages:**
+   - Vá em **Settings** > **Pages**.
+   - Em **Build and deployment** > **Source**, selecione **GitHub Actions**.
+
+4. **Deploy Automático:**
+   - O arquivo `.github/workflows/deploy.yml` já está configurado. Toda vez que você fizer um `push` para a branch `main`, o GitHub irá automaticamente compilar e publicar o site.
+
+## Desenvolvimento Local
+
+1. Instale as dependências:
+   ```bash
+   npm install
+   ```
+
+2. Inicie o servidor de desenvolvimento:
+   ```bash
+   npm run dev
+   ```
+
+3. Para gerar a versão de produção:
+   ```bash
+   npm run build
+   ```
+   Os arquivos prontos para hospedagem manual estarão na pasta `dist/`.
